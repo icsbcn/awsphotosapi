@@ -219,6 +219,10 @@ This project is hosted at [https://github.com/icsbcn/awsphotosapi](https://githu
 
 Suggestions, issues, and pull requests are welcome!
 
+## Author
+
+Created by [icsbcn](https://jo.cat/icsbcn).
+
 ## Built with AI
 
 This project was created with [Claude](https://claude.ai) by Anthropic.
