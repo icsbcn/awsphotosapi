@@ -1,6 +1,6 @@
 # Amazon Photos CLI
 
-A Laravel-based CLI tool to find photos in your **Amazon Photos** library that are not classified in any album.
+A Laravel-based CLI tool to find photos in your **Amazon Photos** library that are not classified in any album, and to detect possible duplicate photos using visual comparison.
 
 > **Note:** This project uses Amazon Photos' unofficial API (reverse-engineered). It requires manual cookie extraction from your browser session — there is no OAuth flow.
 
@@ -9,7 +9,8 @@ A Laravel-based CLI tool to find photos in your **Amazon Photos** library that a
 ## Features
 
 - Detect all photos that do not belong to any album
-- Four combinable filters:
+- Detect duplicate photos using perceptual hashing ([sapientpro/image-comparator](https://github.com/sapientpro/image-comparator))
+- Combinable filters for both commands:
   - Skip photos already analyzed recently (`--skip-analyzed-days`)
   - Only analyze photos uploaded in the last N days (`--uploaded-last-days`)
   - Filter by upload date range (`--uploaded-between`)
@@ -122,7 +123,72 @@ php artisan photos:find-unclassified \
 
 ---
 
-## CSV output format
+## Find duplicate photos
+
+```bash
+php artisan photos:find-duplicates
+```
+
+Detection works in two steps:
+
+1. **Candidate grouping** — photos are grouped by a lightweight metadata criterion (`--group-by`) to avoid comparing every photo against every other.
+2. **Visual comparison** — each candidate pair is downloaded and compared using perceptual hashing. Only pairs whose similarity score meets the threshold (`--similarity`) are reported as duplicates.
+
+### Grouping criteria (`--group-by`)
+
+| Value | Groups candidates when… |
+|-------|--------------------------|
+| `name` *(default)* | Two or more photos share the same file name |
+| `taken-at` | Two or more photos share the exact same EXIF capture timestamp |
+| `name-and-taken-at` | Same file name **and** same EXIF capture timestamp (strictest) |
+
+Photos without an EXIF date are excluded when using `taken-at` or `name-and-taken-at`.
+
+### Examples
+
+```bash
+# By file name (default), minimum 90% similarity
+php artisan photos:find-duplicates
+
+# By capture date, stricter threshold
+php artisan photos:find-duplicates --group-by=taken-at --similarity=95
+
+# Strictest criteria, scoped to a date range
+php artisan photos:find-duplicates --group-by=name-and-taken-at --taken-between=01/01/2024,31/12/2024
+
+# Export to CSV
+php artisan photos:find-duplicates --output=csv --csv-path=exports/duplicates.csv
+```
+
+### Available options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--group-by=CRITERIA` | Candidate grouping: `name`, `taken-at`, `name-and-taken-at` | `name` |
+| `--similarity=N` | Minimum similarity percentage to confirm a duplicate (0–100) | `90` |
+| `--uploaded-last-days=N` | Only photos uploaded in the last N days | disabled |
+| `--uploaded-between=FROM,TO` | Only photos uploaded between two dates (`dd/mm/yyyy`) | — |
+| `--taken-between=FROM,TO` | Only photos taken between two dates (`dd/mm/yyyy`, EXIF) | — |
+| `--output=console\|csv` | Output format | `console` |
+| `--csv-path=PATH` | CSV file path (relative to `storage/app`) | `amazon-photos/duplicates.csv` |
+
+### CSV output format (duplicates)
+
+| Column | Description |
+|--------|-------------|
+| `pair` | Pair number — the two rows with the same number are the duplicate pair |
+| `similarity` | Visual similarity percentage (0–100) |
+| `id` | Amazon Photos node ID |
+| `name` | File name |
+| `uploaded_at` | Upload timestamp (ISO 8601) |
+| `taken_at` | Capture timestamp from EXIF (ISO 8601, empty if unavailable) |
+| `url` | Temporary download URL |
+
+> **Note:** Comparison downloads each candidate image. On large libraries, narrow the scope with `--uploaded-between` or `--taken-between` to keep runs fast.
+
+---
+
+## CSV output format (unclassified)
 
 | Column | Description |
 |--------|-------------|
@@ -163,19 +229,23 @@ Logs are written to `storage/logs/laravel.log`. Set `LOG_LEVEL=debug` in `.env` 
 ```
 app/
 ├── Console/Commands/
-│   └── FindUnclassifiedPhotosCommand.php  # Main Artisan command
+│   ├── FindUnclassifiedPhotosCommand.php  # Artisan command: photos:find-unclassified
+│   └── FindDuplicatePhotosCommand.php     # Artisan command: photos:find-duplicates
 ├── DTOs/
 │   ├── Photo.php                          # Immutable photo value object
-│   └── Album.php                          # Immutable album value object
+│   ├── Album.php                          # Immutable album value object
+│   └── DuplicatePair.php                 # Confirmed duplicate pair with similarity score
 ├── Services/
 │   ├── AmazonPhotos/
 │   │   ├── AmazonPhotosClient.php         # HTTP client (auth, retries)
 │   │   ├── PhotoService.php               # Fetch all photos (paginated)
 │   │   └── AlbumService.php               # Fetch albums + their children
-│   └── Cache/
-│       └── AnalysisHistoryCache.php       # File-based analysis history
+│   ├── Cache/
+│   │   └── AnalysisHistoryCache.php       # File-based analysis history
+│   └── ImageComparatorService.php         # Perceptual hash comparison wrapper
 └── Support/
     ├── DateParser.php                     # European date format (dd/mm/yyyy)
+    ├── DuplicateDetector.php              # Candidate grouping by metadata
     └── PhotoFilter.php                    # Apply all CLI filters
 config/
 └── amazon-photos.php                      # Package configuration
