@@ -49,6 +49,9 @@ jobs:
       - name: Generate Application Key
         run: php artisan key:generate
 
+      - name: Prepare Storage
+        run: mkdir -p storage/framework/views storage/framework/cache storage/framework/sessions
+
       - name: Generate Wayfinder Types
         run: php artisan wayfinder:generate --with-form --no-interaction
 
