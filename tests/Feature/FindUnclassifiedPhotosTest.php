@@ -27,13 +27,12 @@ class FindUnclassifiedPhotosTest extends TestCase
 
     public function test_unclassified_photos_are_shown_in_console(): void
     {
-        [$photo1, $photo2, $albumedPhoto] = $this->makePhotos();
+        $photo1 = $this->makePhoto('photo-1');
+        $photo2 = $this->makePhoto('photo-2');
+        $albumedPhoto = $this->makePhoto('photo-3', parentIds: ['album-1']);
 
         $this->mockPhotoService(collect([$photo1, $photo2, $albumedPhoto]));
-        $this->mockAlbumService(
-            albums: collect([new Album('album-1', 'Vacation')]),
-            albumedIds: collect([$albumedPhoto->id]),
-        );
+        $this->mockAlbumService(collect([new Album('album-1', 'Vacation')]));
 
         $this->artisan('photos:find-unclassified')
             ->assertSuccessful()
@@ -47,13 +46,12 @@ class FindUnclassifiedPhotosTest extends TestCase
 
     public function test_csv_is_exported_when_output_option_is_csv(): void
     {
-        [$photo1, $photo2, $albumedPhoto] = $this->makePhotos();
+        $photo1 = $this->makePhoto('photo-1');
+        $photo2 = $this->makePhoto('photo-2');
+        $albumedPhoto = $this->makePhoto('photo-3', parentIds: ['album-1']);
 
         $this->mockPhotoService(collect([$photo1, $photo2, $albumedPhoto]));
-        $this->mockAlbumService(
-            albums: collect([new Album('album-1', 'Vacation')]),
-            albumedIds: collect([$albumedPhoto->id]),
-        );
+        $this->mockAlbumService(collect([new Album('album-1', 'Vacation')]));
 
         $this->artisan('photos:find-unclassified --output=csv')
             ->assertSuccessful();
@@ -77,7 +75,7 @@ class FindUnclassifiedPhotosTest extends TestCase
         $old = $this->makePhoto('photo-old', uploadedAt: Carbon::now()->subDays(30));
 
         $this->mockPhotoService(collect([$recent, $old]));
-        $this->mockAlbumService(collect(), collect());
+        $this->mockAlbumService(collect());
 
         $this->artisan('photos:find-unclassified --uploaded-last-days=7')
             ->assertSuccessful()
@@ -94,7 +92,7 @@ class FindUnclassifiedPhotosTest extends TestCase
         $outOfRange = $this->makePhoto('photo-out', uploadedAt: Carbon::createFromFormat('d/m/Y', '01/03/2024'));
 
         $this->mockPhotoService(collect([$inRange, $outOfRange]));
-        $this->mockAlbumService(collect(), collect());
+        $this->mockAlbumService(collect());
 
         $this->artisan('photos:find-unclassified --uploaded-between=01/01/2024,31/01/2024')
             ->assertSuccessful()
@@ -112,7 +110,7 @@ class FindUnclassifiedPhotosTest extends TestCase
         $noExif = $this->makePhoto('photo-no-exif');
 
         $this->mockPhotoService(collect([$inRange, $outOfRange, $noExif]));
-        $this->mockAlbumService(collect(), collect());
+        $this->mockAlbumService(collect());
 
         $this->artisan('photos:find-unclassified --taken-between=01/01/2023,31/12/2023')
             ->assertSuccessful()
@@ -134,7 +132,7 @@ class FindUnclassifiedPhotosTest extends TestCase
         $fresh = $this->makePhoto('photo-fresh');
 
         $this->mockPhotoService(collect([$photo, $fresh]));
-        $this->mockAlbumService(collect(), collect());
+        $this->mockAlbumService(collect());
 
         $this->artisan('photos:find-unclassified --skip-analyzed-days=7')
             ->assertSuccessful()
@@ -166,18 +164,33 @@ class FindUnclassifiedPhotosTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // parentIds-based classification
+    // -------------------------------------------------------------------------
+
+    public function test_photo_with_album_parent_id_is_not_unclassified(): void
+    {
+        $photo = $this->makePhoto('photo-1', parentIds: ['root-folder', 'album-1']);
+
+        $this->mockPhotoService(collect([$photo]));
+        $this->mockAlbumService(collect([new Album('album-1', 'Fotos Alba')]));
+
+        $this->artisan('photos:find-unclassified')
+            ->assertSuccessful()
+            ->expectsOutputToContain('All photos are classified');
+    }
+
+    // -------------------------------------------------------------------------
     // All photos classified — no results
     // -------------------------------------------------------------------------
 
     public function test_reports_nothing_when_all_photos_are_classified(): void
     {
-        [$photo1, $photo2, $photo3] = $this->makePhotos();
+        $photo1 = $this->makePhoto('photo-1', parentIds: ['album-1']);
+        $photo2 = $this->makePhoto('photo-2', parentIds: ['album-1']);
+        $photo3 = $this->makePhoto('photo-3', parentIds: ['album-1']);
 
         $this->mockPhotoService(collect([$photo1, $photo2, $photo3]));
-        $this->mockAlbumService(
-            albums: collect([new Album('album-1', 'Vacation')]),
-            albumedIds: collect([$photo1->id, $photo2->id, $photo3->id]),
-        );
+        $this->mockAlbumService(collect([new Album('album-1', 'Vacation')]));
 
         $this->artisan('photos:find-unclassified')
             ->assertSuccessful()
@@ -190,10 +203,11 @@ class FindUnclassifiedPhotosTest extends TestCase
 
     public function test_analysis_history_is_persisted_after_run(): void
     {
-        [$photo1, $photo2] = $this->makePhotos();
+        $photo1 = $this->makePhoto('photo-1');
+        $photo2 = $this->makePhoto('photo-2');
 
         $this->mockPhotoService(collect([$photo1, $photo2]));
-        $this->mockAlbumService(collect(), collect());
+        $this->mockAlbumService(collect());
 
         $this->artisan('photos:find-unclassified')->assertSuccessful();
 
@@ -206,20 +220,14 @@ class FindUnclassifiedPhotosTest extends TestCase
     // Helpers
     // -------------------------------------------------------------------------
 
-    /** @return array{0: Photo, 1: Photo, 2: Photo} */
-    private function makePhotos(): array
-    {
-        return [
-            $this->makePhoto('photo-1'),
-            $this->makePhoto('photo-2'),
-            $this->makePhoto('photo-3'),
-        ];
-    }
-
+    /**
+     * @param  array<int, string>  $parentIds
+     */
     private function makePhoto(
         string $id,
         ?Carbon $uploadedAt = null,
         ?Carbon $takenAt = null,
+        array $parentIds = [],
     ): Photo {
         return new Photo(
             id: $id,
@@ -227,7 +235,7 @@ class FindUnclassifiedPhotosTest extends TestCase
             uploadedAt: $uploadedAt ?? Carbon::now(),
             takenAt: $takenAt,
             url: null,
-            parentIds: [],
+            parentIds: $parentIds,
         );
     }
 
@@ -242,14 +250,12 @@ class FindUnclassifiedPhotosTest extends TestCase
     }
 
     /**
-     * @param  Collection<int, Album>   $albums
-     * @param  Collection<int, string>  $albumedIds
+     * @param  Collection<int, Album>  $albums
      */
-    private function mockAlbumService(Collection $albums, Collection $albumedIds): void
+    private function mockAlbumService(Collection $albums): void
     {
         $mock = $this->createMock(AlbumService::class);
         $mock->method('fetchAll')->willReturn($albums);
-        $mock->method('fetchAlbumedPhotoIds')->willReturn($albumedIds);
         $this->app->instance(AlbumService::class, $mock);
     }
 

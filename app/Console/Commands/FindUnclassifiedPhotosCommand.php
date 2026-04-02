@@ -65,7 +65,7 @@ class FindUnclassifiedPhotosCommand extends Command
         $filteredPhotos = PhotoFilter::apply($allPhotos, $filters, $this->history);
         $this->line("  → {$filteredPhotos->count()} photos after filters (of {$allPhotos->count()} total).");
 
-        // Step 3 — fetch albums and their photo IDs
+        // Step 3 — fetch albums
         $this->info('Fetching all albums...');
         $albums = $this->withProgress(
             'Fetching albums',
@@ -73,16 +73,11 @@ class FindUnclassifiedPhotosCommand extends Command
         );
         $this->line("  → {$albums->count()} albums found.");
 
-        $this->info('Fetching album contents...');
-        $albumedIds = $this->withProgress(
-            'Fetching album contents',
-            fn () => $this->albumService->fetchAlbumedPhotoIds($albums)
-        );
-        $this->line("  → {$albumedIds->count()} unique photos belong to at least one album.");
+        $albumIds = $albums->pluck('id')->flip();
 
-        // Step 4 — find unclassified photos
+        // Step 4 — find unclassified photos (using parentIds from each photo)
         $unclassified = $filteredPhotos->filter(
-            fn (Photo $p) => ! $albumedIds->contains($p->id)
+            fn (Photo $p) => ! collect($p->parentIds)->contains(fn ($id) => $albumIds->has($id))
         )->values();
 
         $this->newLine();

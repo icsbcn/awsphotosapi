@@ -50,43 +50,4 @@ class AlbumService
 
         return $albums;
     }
-
-    /**
-     * Fetch the IDs of all photos that belong to at least one album.
-     *
-     * @param  Collection<int, Album>  $albums
-     * @return Collection<int, string>
-     */
-    public function fetchAlbumedPhotoIds(Collection $albums): Collection
-    {
-        $pageSize = config('amazon-photos.page_size', 200);
-        $albumedIds = collect();
-
-        foreach ($albums as $album) {
-            $offset = 0;
-
-            Log::debug("Fetching children of album [{$album->name}]...");
-
-            do {
-                $response = $this->client->get("/nodes/{$album->id}/children", [
-                    'limit' => $pageSize,
-                    'offset' => $offset,
-                    'asset' => 'ALL',
-                    'resourceVersion' => 'V2',
-                    'ContentType' => 'JSON',
-                ]);
-
-                $nodes = $response['data'] ?? [];
-                $count = count($nodes);
-
-                foreach ($nodes as $node) {
-                    $albumedIds->push($node['id']);
-                }
-
-                $offset += $pageSize;
-            } while ($count === $pageSize);
-        }
-
-        return $albumedIds->unique()->values();
-    }
 }
