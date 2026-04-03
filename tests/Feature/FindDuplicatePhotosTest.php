@@ -229,6 +229,69 @@ class FindDuplicatePhotosTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // Direct comparison by ID
+    // -------------------------------------------------------------------------
+
+    public function test_compares_two_photos_by_id_when_both_arguments_are_given(): void
+    {
+        $a = $this->makePhoto('photo-1', name: 'IMG_001.jpg', url: 'https://example.com/1.jpg');
+        $b = $this->makePhoto('photo-2', name: 'IMG_002.jpg', url: 'https://example.com/2.jpg');
+
+        $mock = $this->createMock(PhotoService::class);
+        $mock->method('fetchById')
+            ->willReturnMap([['photo-1', $a], ['photo-2', $b]]);
+        $this->app->instance(PhotoService::class, $mock);
+
+        $this->mockComparatorService([[$a, $b, 92.0]]);
+
+        $this->artisan('photos:find-duplicates photo-1 photo-2')
+            ->assertSuccessful()
+            ->expectsOutputToContain('92%')
+            ->expectsOutputToContain('These photos are duplicates');
+    }
+
+    public function test_direct_comparison_reports_not_duplicate_when_below_threshold(): void
+    {
+        $a = $this->makePhoto('photo-1', name: 'IMG_001.jpg', url: 'https://example.com/1.jpg');
+        $b = $this->makePhoto('photo-2', name: 'IMG_002.jpg', url: 'https://example.com/2.jpg');
+
+        $mock = $this->createMock(PhotoService::class);
+        $mock->method('fetchById')
+            ->willReturnMap([['photo-1', $a], ['photo-2', $b]]);
+        $this->app->instance(PhotoService::class, $mock);
+
+        $this->mockComparatorService([[$a, $b, 50.0]]);
+
+        $this->artisan('photos:find-duplicates photo-1 photo-2')
+            ->assertSuccessful()
+            ->expectsOutputToContain('NOT duplicates');
+    }
+
+    public function test_direct_comparison_fails_when_only_one_id_is_given(): void
+    {
+        $this->artisan('photos:find-duplicates photo-1')
+            ->assertFailed()
+            ->expectsOutputToContain('both photo IDs');
+    }
+
+    public function test_direct_comparison_fails_when_comparison_returns_null(): void
+    {
+        $a = $this->makePhoto('photo-1', name: 'IMG_001.jpg', url: null);
+        $b = $this->makePhoto('photo-2', name: 'IMG_002.jpg', url: null);
+
+        $mock = $this->createMock(PhotoService::class);
+        $mock->method('fetchById')
+            ->willReturnMap([['photo-1', $a], ['photo-2', $b]]);
+        $this->app->instance(PhotoService::class, $mock);
+
+        $this->mockComparatorService([[$a, $b, null]]);
+
+        $this->artisan('photos:find-duplicates photo-1 photo-2')
+            ->assertFailed()
+            ->expectsOutputToContain('Could not compare');
+    }
+
+    // -------------------------------------------------------------------------
     // Validation errors
     // -------------------------------------------------------------------------
 

@@ -12,6 +12,17 @@ class PhotoService
         private readonly AmazonPhotosClient $client,
     ) {}
 
+    public function fetchById(string $id): Photo
+    {
+        $response = $this->client->get("/nodes/{$id}", [
+            'tempLink' => 'true',
+            'resourceVersion' => 'V2',
+            'ContentType' => 'JSON',
+        ]);
+
+        return Photo::fromApiResponse($response);
+    }
+
     /**
      * Fetch all photos from Amazon Photos (paginates automatically).
      *

@@ -18,6 +18,8 @@ use Illuminate\Support\Facades\Storage;
 class FindDuplicatePhotosCommand extends Command
 {
     protected $signature = 'photos:find-duplicates
+        {photo1?                  : ID of the first photo to compare directly}
+        {photo2?                  : ID of the second photo to compare directly}
         {--group-by=name          : Candidate criteria: "name", "taken-at", or "name-and-taken-at"}
         {--similarity=90          : Minimum similarity percentage to confirm a duplicate (0–100)}
         {--uploaded-last-days=0   : Only analyze photos uploaded in the last N days (0 = disabled)}
@@ -43,6 +45,19 @@ class FindDuplicatePhotosCommand extends Command
             $this->error('Amazon Photos credentials are not configured. Please set AMAZON_PHOTOS_SESSION_ID, AMAZON_PHOTOS_UBID, and AMAZON_PHOTOS_AT in your .env file.');
 
             return self::FAILURE;
+        }
+
+        $photo1Id = $this->argument('photo1');
+        $photo2Id = $this->argument('photo2');
+
+        if ($photo1Id !== null || $photo2Id !== null) {
+            if ($photo1Id === null || $photo2Id === null) {
+                $this->error('You must provide both photo IDs to compare. Usage: photos:find-duplicates {photo1} {photo2}');
+
+                return self::FAILURE;
+            }
+
+            return $this->compareTwoPhotosById($photo1Id, $photo2Id, (float) $this->option('similarity'));
         }
 
         $groupBy = $this->option('group-by');
@@ -114,6 +129,36 @@ class FindDuplicatePhotosCommand extends Command
         }
 
         $this->renderConsoleTable($pairs);
+
+        return self::SUCCESS;
+    }
+
+    private function compareTwoPhotosById(string $id1, string $id2, float $threshold): int
+    {
+        $this->info("Fetching photo \"{$id1}\"...");
+        $a = $this->photoService->fetchById($id1);
+
+        $this->info("Fetching photo \"{$id2}\"...");
+        $b = $this->photoService->fetchById($id2);
+
+        $this->info('Comparing images…');
+        $similarity = $this->comparatorService->compare($a, $b);
+
+        if ($similarity === null) {
+            $this->warn('Could not compare the two photos (missing URL or download failed).');
+
+            return self::FAILURE;
+        }
+
+        $this->newLine();
+        $this->renderConsoleTable(collect([new DuplicatePair($a, $b, $similarity)]));
+        $this->line("Similarity: <comment>{$similarity}%</comment> (threshold: {$threshold}%)");
+
+        if ($similarity >= $threshold) {
+            $this->info('These photos are duplicates.');
+        } else {
+            $this->info('These photos are NOT duplicates.');
+        }
 
         return self::SUCCESS;
     }

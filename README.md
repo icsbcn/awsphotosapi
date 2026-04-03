@@ -144,6 +144,24 @@ Detection works in two steps:
 
 Photos without an EXIF date are excluded when using `taken-at` or `name-and-taken-at`.
 
+### Direct comparison by ID
+
+If you already know the IDs of two photos and want to compare them immediately — without fetching your entire library — pass both IDs as arguments:
+
+```bash
+php artisan photos:find-duplicates {photo1-id} {photo2-id}
+```
+
+The command fetches both photos directly via `/nodes/{id}`, compares them visually, and reports the similarity percentage together with whether they meet the threshold.
+
+```bash
+# Compare two specific photos (default 90% threshold)
+php artisan photos:find-duplicates AbCdEf1234 XyZwVu5678
+
+# Use a custom threshold
+php artisan photos:find-duplicates AbCdEf1234 XyZwVu5678 --similarity=85
+```
+
 ### Examples
 
 ```bash
@@ -238,7 +256,7 @@ app/
 ├── Services/
 │   ├── AmazonPhotos/
 │   │   ├── AmazonPhotosClient.php         # HTTP client (auth, retries)
-│   │   ├── PhotoService.php               # Fetch all photos (paginated)
+│   │   ├── PhotoService.php               # Fetch all photos (paginated) + fetch by ID
 │   │   └── AlbumService.php               # Fetch albums + their children
 │   ├── Cache/
 │   │   └── AnalysisHistoryCache.php       # File-based analysis history
